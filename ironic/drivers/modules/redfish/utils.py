@@ -377,6 +377,58 @@ def get_system(node):
         raise exception.RedfishError(error=e)
 
 
+def get_chassis_expanded(node):
+    """Get expanded chassis data for sensor collection optimization.
+
+    :param node: an Ironic node object
+    :raises: RedfishConnectionError when it fails to connect to Redfish
+    :raises: RedfishError if Chassis expansion fails
+    :returns: Expanded chassis object with thermal and power info
+    """
+    driver_info = parse_driver_info(node)
+    system_id = driver_info['system_id']
+
+    try:
+        # Convert system path to chassis path (e.g.,
+        # /redfish/v1/Systems/1 -> /redfish/v1/Chassis/1)
+        chassis_path = (system_id.replace('/Systems/', '/Chassis/')
+                        if system_id else None)
+        return _get_connection(
+            node,
+            lambda conn, chassis_path: conn.get_chassis(chassis_path,
+                                                        expanded=True),
+            chassis_path)
+    except Exception as e:
+        LOG.warning('Failed to get expanded chassis for node %(node)s: '
+                    '%(error)s',
+                    {'node': node.uuid, 'error': e})
+        raise exception.RedfishError(error=e)
+
+
+def get_storage_expanded(node):
+    """Get expanded storage collection for optimized drive sensor collection.
+
+
+    :param node: an Ironic node object
+    :raises: RedfishConnectionError when it fails to connect to Redfish
+    :raises: RedfishError if Storage expansion fails
+    :returns: Expanded StorageCollection object with drives uri loaded
+    """
+    driver_info = parse_driver_info(node)
+    system_id = driver_info['system_id']
+
+    try:
+        return _get_connection(
+            node,
+            lambda conn, system_path: conn.get_storage_expanded(system_path),
+            system_id)
+    except Exception as e:
+        LOG.warning('Failed to get expanded storage for node %(node)s: '
+                    '%(error)s',
+                    {'node': node.uuid, 'error': e})
+        raise exception.RedfishError(error=e)
+
+
 def get_system_collection(node):
     """Get a Redfish System Collection that includes the node
 

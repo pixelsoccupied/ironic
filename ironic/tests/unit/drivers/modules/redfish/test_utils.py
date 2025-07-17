@@ -598,3 +598,70 @@ class RedfishUtilsSystemTestCase(db_base.DbTestCase):
         fake_conn.get_system.assert_has_calls(expected_get_system_calls)
         fake_system.assert_called_once_with('bar')
         self.assertEqual(fake_conn.get_system.call_count, 2)
+
+    @mock.patch.object(redfish_utils, '_get_connection', autospec=True)
+    @mock.patch.object(redfish_utils, 'parse_driver_info', autospec=True)
+    def test_get_chassis_expanded(self, mock_parse_driver,
+                                  mock_get_connection):
+        mock_parse_driver.return_value = {
+            'system_id': '/redfish/v1/Systems/1'
+        }
+
+        mock_chassis = mock.MagicMock()
+        mock_get_connection.return_value = mock_chassis
+
+        result = redfish_utils.get_chassis_expanded(self.node)
+
+        # Verify path conversion from Systems to Chassis
+        expected_chassis_path = '/redfish/v1/Chassis/1'
+        mock_get_connection.assert_called_once()
+
+        # Verify the chassis path argument
+        call_args = mock_get_connection.call_args
+        self.assertEqual(call_args[0][1], expected_chassis_path)
+        self.assertEqual(result, mock_chassis)
+
+    @mock.patch.object(redfish_utils, '_get_connection', autospec=True)
+    @mock.patch.object(redfish_utils, 'parse_driver_info', autospec=True)
+    def test_get_chassis_expanded_redfish_error(self, mock_parse_driver,
+                                                mock_get_connection):
+        mock_parse_driver.return_value = {
+            'system_id': '/redfish/v1/Systems/1'
+        }
+        mock_get_connection.side_effect = (
+            sushy.exceptions.SushyError("Chassis not found"))
+
+        self.assertRaises(exception.RedfishError,
+                          redfish_utils.get_chassis_expanded, self.node)
+
+    @mock.patch.object(redfish_utils, '_get_connection', autospec=True)
+    @mock.patch.object(redfish_utils, 'parse_driver_info', autospec=True)
+    def test_get_storage_expanded(self, mock_parse_driver,
+                                  mock_get_connection):
+        mock_parse_driver.return_value = {
+            'system_id': '/redfish/v1/Systems/1'
+        }
+
+        mock_storage_collection = mock.MagicMock()
+        mock_get_connection.return_value = mock_storage_collection
+
+        result = redfish_utils.get_storage_expanded(self.node)
+
+        # Verify system path passed directly
+        mock_get_connection.assert_called_once()
+        call_args = mock_get_connection.call_args
+        self.assertEqual(call_args[0][1], '/redfish/v1/Systems/1')
+        self.assertEqual(result, mock_storage_collection)
+
+    @mock.patch.object(redfish_utils, '_get_connection', autospec=True)
+    @mock.patch.object(redfish_utils, 'parse_driver_info', autospec=True)
+    def test_get_storage_expanded_redfish_error(self, mock_parse_driver,
+                                                mock_get_connection):
+        mock_parse_driver.return_value = {
+            'system_id': '/redfish/v1/Systems/1'
+        }
+        mock_get_connection.side_effect = (
+            sushy.exceptions.SushyError("Storage not accessible"))
+
+        self.assertRaises(exception.RedfishError,
+                          redfish_utils.get_storage_expanded, self.node)
