@@ -532,10 +532,10 @@ class RedfishManagement(base.ManagementInterface):
         return sensors
 
     def get_sensors_data(self, task):
-        """Get sensors data with optimized collection.
+        """Get sensors data.
 
         Collects sensor data from chassis (fans, temperature, power) and
-        storage (drives).
+        storage (drives) with minimal redfish API calls.
 
         :param task: a TaskManager instance.
         :returns: returns a dict of sensor data grouped by sensor type.

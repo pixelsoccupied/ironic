@@ -647,7 +647,7 @@ class RedfishUtilsSystemTestCase(db_base.DbTestCase):
 
         result = redfish_utils.get_storage_expanded(self.node)
 
-        # Verify system path passed directly (no conversion needed)
+        # Verify system path passed directly
         mock_get_connection.assert_called_once()
         call_args = mock_get_connection.call_args
         self.assertEqual(call_args[0][1], '/redfish/v1/Systems/1')
