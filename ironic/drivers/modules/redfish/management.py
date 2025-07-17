@@ -624,10 +624,9 @@ class RedfishManagement(base.ManagementInterface):
     def _process_drive_sensors(self, node):
         """Process all storage sensors using storage expansion optimization.
 
-        Process all storage sensors (Drive) using storage expansion
-        optimization. Extracts only the available drive links from the expanded
-        storage collection and processes them directly, avoiding iteration over
-        storage controllers that have no drives.
+        Process all storage sensors (Drive) with expand call.
+        Extracts only the available drive links from the expanded
+        storage collection and processes them directly.
 
         :param node: Ironic node object
         :returns: Dictionary with Drive sensor data
