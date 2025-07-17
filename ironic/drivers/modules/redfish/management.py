@@ -651,7 +651,6 @@ class RedfishManagement(base.ManagementInterface):
                                                'drives_identities', [])
 
                     # Check and log if there's at least one drive for the
-                    # current storage controller. 1 API call per drive
                     if drive_identities:
                         LOG.info("Storage %s has %d drive links: %s",
                                  storage.identity, len(drive_identities),
