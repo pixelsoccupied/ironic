@@ -647,14 +647,12 @@ class RedfishManagement(base.ManagementInterface):
             # Process drives from all storage controllers
             for storage in storage_collection_expanded.get_members():
                 try:
-                    drive_identities = getattr(storage,
-                                               'drives_identities', [])
-
                     # Check and log if there's at least one drive for the
-                    if drive_identities:
+                    if storage.drives_identities:
                         LOG.info("Storage %s has %d drive links: %s",
-                                 storage.identity, len(drive_identities),
-                                 drive_identities)
+                                 storage.identity,
+                                 len(storage.drives_identities),
+                                 storage.drives_identities)
                         storage_drives = self._get_sensors_drive(
                             storage, system_identity)
                         drives.update(storage_drives)
