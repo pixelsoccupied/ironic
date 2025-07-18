@@ -647,7 +647,7 @@ class RedfishManagement(base.ManagementInterface):
             # Process drives from all storage controllers
             for storage in storage_collection_expanded.get_members():
                 try:
-                    # Check and log if there's at least one drive for the
+                    # Check and log if there's at least one drive
                     if storage.drives_identities:
                         LOG.info("Storage %s has %d drive links: %s",
                                  storage.identity,
