@@ -511,47 +511,77 @@ class RedfishManagement(base.ManagementInterface):
         return sensors
 
     @classmethod
-    def _get_sensors_drive(cls, system):
+    def _get_sensors_drive(cls, storage, system_identity):
         """Get storage drive sensors reading.
 
-        :param chassis: Redfish `system` object
+        :param storage: Redfish `storage` object
+        :param system_identity: Identity of the parent system
         :returns: returns a dict of sensor data.
         """
         sensors = {}
 
-        if storages := system.storage or system.simple_storage:
-            for storage in storages.get_members():
-                drives = storage.drives if hasattr(
-                    storage, 'drives') else storage.devices
-                for drive in drives:
-                    sensor = cls._sensor2dict(
-                        drive, 'name', 'model', 'capacity_bytes')
-                    sensor.update(
-                        cls._sensor2dict(drive.status, 'state', 'health'))
-                    unique_name = '%s:%s@%s' % (
-                        drive.name, storage.identity, system.identity)
-                    sensors[unique_name] = sensor
+        for drive in storage.drives:
+            sensor = cls._sensor2dict(
+                drive, 'name', 'model', 'capacity_bytes')
+            sensor.update(cls._sensor2dict(
+                drive.status, 'state', 'health'))
+            unique_name = '%s:%s@%s' % (
+                drive.name, storage.identity, system_identity)
+            sensors[unique_name] = sensor
 
         return sensors
 
     def get_sensors_data(self, task):
         """Get sensors data.
 
+        Collects sensor data from chassis (fans, temperature, power) and
+        storage (drives) with minimal redfish API calls.
+
         :param task: a TaskManager instance.
-        :raises: FailedToGetSensorData when getting the sensor data fails.
-        :raises: FailedToParseSensorData when parsing sensor data fails.
-        :raises: InvalidParameterValue if required parameters
-                 are missing.
-        :raises: MissingParameterValue if a required parameter is missing.
         :returns: returns a dict of sensor data grouped by sensor type.
         """
-        node = task.node
+        method_start = time.time()
 
+        node = task.node
         sensors = collections.defaultdict(dict)
 
-        system = redfish_utils.get_system(node)
+        try:
+            # Process chassis sensors (fans, temperature, power)
+            chassis_data = self._process_chassis_sensors(node)
+            sensors['Fan'].update(chassis_data['Fan'])
+            sensors['Temperature'].update(chassis_data['Temperature'])
+            sensors['Power'].update(chassis_data['Power'])
 
-        for chassis in system.chassis:
+            # Process storage sensors (drives)
+            storage_data = self._process_drive_sensors(node)
+            sensors['Drive'].update(storage_data['Drive'])
+
+            total = time.time() - method_start
+            LOG.debug("Gathered sensor data for node %s in %.2f seconds: %s",
+                      node.uuid, total, sensors)
+        except Exception as exc:
+            LOG.error("Sensor collection failed for node %(node)s: %(error)s",
+                      {'node': node.uuid, 'error': exc})
+
+        return sensors
+
+    def _process_chassis_sensors(self, node):
+        """Process all chassis sensors using single expanded.
+
+        Process all chassis sensors (Fan, Temperature, Power) using single
+        expanded Redfish API call.
+
+        :param node: Ironic node object
+        :returns: Dictionary with Fan, Temperature, and Power sensor data
+        """
+
+        start_time = time.time()
+        sensors = {'Fan': {}, 'Temperature': {}, 'Power': {}}
+
+        try:
+            # 1 API call to get all the available Power, Temp and Fans
+            chassis = redfish_utils.get_chassis_expanded(node)
+
             try:
                 sensors['Fan'].update(self._get_sensors_fan(chassis))
 
@@ -577,17 +607,76 @@ class RedfishManagement(base.ManagementInterface):
                           "%(node)s: %(error)s", {'node': node.uuid,
                                                   'error': exc})
 
+            # Log
+            total_chassis_sensors = sum(len(data) for data in sensors.values())
+            chassis_time = time.time() - start_time
+            LOG.info("Chassis processing completed for node %s: %d sensors "
+                     "in %.2f seconds",
+                     node.uuid, total_chassis_sensors, chassis_time)
+
+        except Exception as exc:
+            LOG.warning("Failed reading expanded chassis information for "
+                        "node %(node)s: %(error)s",
+                        {'node': node.uuid, 'error': exc})
+
+        return sensors
+
+    def _process_drive_sensors(self, node):
+        """Process all storage sensors using storage expansion optimization.
+
+        Process all storage sensors (Drive) with expand call.
+        Extracts only the available drive links from the expanded
+        storage collection and processes them directly.
+
+        :param node: Ironic node object
+        :returns: Dictionary with Drive sensor data
+        """
+        start_time = time.time()
+        storage_sensors = {'Drive': {}}
+
+        # Get system identity from driver info
+        driver_info = redfish_utils.parse_driver_info(node)
+        system_identity = driver_info['system_id'].split('/')[-1]
+
         try:
-            sensors['Drive'].update(self._get_sensors_drive(system))
+            drives = {}
+            # 1 API call to get all the available Drives uri using $expand
+            storage_collection_expanded = (
+                redfish_utils.get_storage_expanded(node))
+
+            # Process drives from all storage controllers
+            for storage in storage_collection_expanded.get_members():
+                try:
+                    # Check and log if there's at least one drive
+                    if storage.drives_identities:
+                        LOG.info("Storage %s has %d drive links: %s",
+                                 storage.identity,
+                                 len(storage.drives_identities),
+                                 storage.drives_identities)
+                        storage_drives = self._get_sensors_drive(
+                            storage, system_identity)
+                        drives.update(storage_drives)
+
+                except Exception as drive_exc:
+                    LOG.warning("Failed to process drives from storage %s: %s",
+                                storage.identity, drive_exc)
+                    continue
+
+            storage_sensors['Drive'].update(drives)
+
+            # Log
+            total_storage_sensors = len(storage_sensors['Drive'])
+            storage_time = time.time() - start_time
+            LOG.info("Storage processing completed for node %s: %d sensors "
+                     "in %.2f seconds",
+                     node.uuid, total_storage_sensors, storage_time)
 
         except sushy.exceptions.SushyError as exc:
             LOG.debug("Failed reading drive information for node "
                       "%(node)s: %(error)s", {'node': node.uuid,
                                               'error': exc})
 
-        LOG.debug("Gathered sensor data: %(sensors)s", {'sensors': sensors})
-
-        return sensors
+        return storage_sensors
 
     @task_manager.require_exclusive_lock
     def inject_nmi(self, task):
